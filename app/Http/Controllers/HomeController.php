@@ -46,7 +46,7 @@ class HomeController extends Controller
 
             $name = (implode('.', $name));
             $request->file('data')->storeAs('temp', $name);
-            $path=storage_path('app').'/temp/'.$name;  
+            $path=storage_path('app').'/temp/'.$name;
 
             $fileName = ($request->file('data')->getClientOriginalName());
             $rows = Excel::toArray(new AlokasiImport, $path);
@@ -55,11 +55,11 @@ class HomeController extends Controller
             unset($rows[0][0]);
             $rows_transpose = array_merge($rows[0]);
             $rows = $this->transpose($rows_transpose);
-            
+
             $kd_desa = [];
             $row_kd_desa = [];
-            $poktan = [];
             $kd_poktan = [];
+            $global_scope = [];
 
             for($i=0; $i < count($rows[1]); $i++) {
                 if(!in_array(number_format($rows[1][$i],0,'.',''), $kd_desa)) {
@@ -68,53 +68,66 @@ class HomeController extends Controller
                 }
             }
 
-            for($i=0; $i < count($rows_transpose); $i++) {
-                for($j=0; $j < count($kd_desa); $j++) {
-                    if(number_format($rows_transpose[$i][1], 0,'.','') == $kd_desa[$j]) {
-                        if(!in_array($rows_transpose[$i][5], $poktan)) {
-                            $poktan[] = $rows_transpose[$i][5];
-                            $kd_poktan[] = $i;
+            $temp_poktan = [];
+            $nik_poktan = [];
+            
+            for($i = 0;$i < count($kd_desa); $i++) {
+                $temp_poktan = [];
+                $nik_poktan = [];
+                
+                for ($j=0; $j < count($rows_transpose); $j++) {
+                    if(number_format($rows_transpose[$j][1], 0,'.','') == $kd_desa[$i]) {
+                        if(!in_array($rows_transpose[$j][5], $temp_poktan)) {
+                            $temp_poktan[] = $rows_transpose[$j][5];
+                            $nik_poktan[] = $rows_transpose[$j][7];
+                            $kd_poktan[] = $j;
                         }
                     }
                 }
+
+                $global_scope[] = [
+                    "kd_desa" => $kd_desa[$i],
+                    "kd_poktan" => $temp_poktan,
+                    "nik_poktan" => $nik_poktan
+                ];
             }
+            unset($temp_poktan);
+            unset($nik_poktan);
 
-            $nik_poktan = [];
-
-            for($i=0; $i < count($kd_poktan); $i++) {
-                $nik_poktan[] = $rows[7][$kd_poktan[$i]];
-            }
-
-            $temp = [];
-                
-            for($i=0; $i < count($kd_poktan); $i++) {
-
-                if(isset($kd_poktan[$i + 1])) {
-                    for($j = $kd_poktan[$i]; $j < $kd_poktan[$i + 1]; $j++) {
-                        $temp[] = $nik_poktan[$i];
-                    }
-                } else {
-                    for($j = $kd_poktan[$i]; $j < count($rows[7]); $j++) {
-                        $temp[] = $nik_poktan[$i];
-                    }
+            $temp_slice =[];
+            for($i=0; $i < count($global_scope); $i++) {
+                for($j = 0; $j < count($global_scope[$i]["kd_poktan"]); $j++) {
+                    $temp_slice[] = [
+                        "kd_desa" => $global_scope[$i]["kd_desa"],
+                        "kd_poktan" => $global_scope[$i]["kd_poktan"][$j],
+                        "nik_poktan" => $global_scope[$i]["nik_poktan"][$j],
+                    ];
                 }
             }
 
-            $rows[5] = $temp;
-
-            $rows_transpose = [];
-            $rows_transpose = $this->transpose($rows);
+            unset($global_scope);
             
-            $final_rows = [];
-            for($i=0; $i < count($rows_transpose) + 1; $i++) {
-                if($i == 0) {
-                    $final_rows[$i] = $header;
-                } else {
-                    $final_rows[$i] = $rows_transpose[$i - 1];
+
+            // Perlu di revisi
+            $nama_poktan = [];
+            for($i=0; $i < count($rows_transpose); $i++) {
+                for ($j = 0; $j < count($temp_slice); $j++) {
+                    if(number_format($rows_transpose[$i][1], 0,'.','') == $temp_slice[$j]["kd_desa"] && $rows_transpose[$i][5] == $temp_slice[$j]["kd_poktan"]) {
+                        $rows_transpose[$i][28] = $rows_transpose[$i][5];
+                        $rows_transpose[$i][5] = $temp_slice[$j]["nik_poktan"];
+                    }
                 }
             }
+            
+            unset($temp_slice);
 
-            $final_to_download = Excel::download(new AlokasiExport($final_rows), $fileName, \Maatwebsite\Excel\Excel::XLS);
+            $header[5] = "NIK Poktan";
+            $header[28] = "Nama Poktan";
+
+            //Tambah Header
+            array_unshift($rows_transpose, $header);
+
+            $final_to_download = Excel::download(new AlokasiExport($rows_transpose), $fileName, \Maatwebsite\Excel\Excel::XLS);
             Storage::delete('temp/' . $name);
             return $final_to_download;
         }
